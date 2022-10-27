@@ -8,7 +8,7 @@ const app = new App();
 const accountId = '585331535030';
 const region = 'eu-central-1';
 
-const staticSiteResourcePrefix = 'cdk-web-static';
+const staticSiteResourcePrefix = 'sonicware-web-static';
 const STATIC_SITE_BUCKET_NAME_OUTPUT_ID = identifyResource(staticSiteResourcePrefix, 'bucket-name');
 const STATIC_SITE_DISTRIBUTION_ID_OUTPUT_ID = identifyResource(staticSiteResourcePrefix, 'distribution-id');
 
