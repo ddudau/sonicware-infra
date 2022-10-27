@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
-import * as cdk from 'aws-cdk-lib';
 import { SonicwareInfraStack } from '../lib/sonicware-infra-stack';
 import { identifyResource } from '../lib/config-util';
+import { App } from 'aws-cdk-lib';
 
-const app = new cdk.App();
+const app = new App();
 const accountId = '585331535030';
 const region = 'eu-central-1';
 
