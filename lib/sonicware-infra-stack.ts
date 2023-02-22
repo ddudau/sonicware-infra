@@ -1,10 +1,11 @@
 import { Aws, CfnOutput, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
+import { DomainName, EndpointType, SecurityPolicy } from 'aws-cdk-lib/aws-apigateway';
 import { DnsValidatedCertificate } from 'aws-cdk-lib/aws-certificatemanager';
 import { CloudFrontAllowedMethods, CloudFrontWebDistribution, OriginAccessIdentity, SecurityPolicyProtocol, SSLMethod, ViewerCertificate } from 'aws-cdk-lib/aws-cloudfront';
 import { Metric } from 'aws-cdk-lib/aws-cloudwatch';
 import { CanonicalUserPrincipal, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
-import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { ApiGatewayDomain, CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import { identifyResource } from './config-util';
@@ -31,6 +32,7 @@ export class SonicwareInfraStack extends Stack {
     const zone = HostedZone.fromLookup(this, identifyResource(props.resourcePrefix, 'hosted-zone'), { domainName: props.hostedZoneName });
     const siteDomain = props.domainName;
     const fullSiteDomain = `www.${siteDomain}`;
+    const apiDomain = `api.${siteDomain}`;
     const cloudfrontOAI = new OriginAccessIdentity(this, identifyResource(props.resourcePrefix, 'cloudfront-OAI'), {
       comment: `OAI for ${id}`
     });
@@ -59,16 +61,16 @@ export class SonicwareInfraStack extends Stack {
     new CfnOutput(this, props.staticSiteBucketNameOutputId, { value: siteBucket.bucketName, exportName: props.staticSiteBucketNameOutputId });
 
     // Create TLS certificate + automatic DNS validation
-    const certificateArn = new DnsValidatedCertificate(this, identifyResource(props.resourcePrefix, 'site-certificate'), {
+    const certificate = new DnsValidatedCertificate(this, identifyResource(props.resourcePrefix, 'site-certificate'), {
       domainName: siteDomain,
       hostedZone: zone,
       region: 'us-east-1', // Cloudfront only checks this region for certificates.
-      subjectAlternativeNames: props.includeWWW ? [fullSiteDomain] : []
-    }).certificateArn;
+      subjectAlternativeNames: props.includeWWW ? [fullSiteDomain, apiDomain] : [apiDomain]
+    });
 
     // Create a CloudFront viewer certificate enforcing usage of HTTPS & TLS v1.2
     const viewerCertificate = ViewerCertificate.fromAcmCertificate({
-      certificateArn: certificateArn,
+      certificateArn: certificate.certificateArn,
       env: {
         region: Aws.REGION,
         account: Aws.ACCOUNT_ID
@@ -87,6 +89,13 @@ export class SonicwareInfraStack extends Stack {
       securityPolicy: SecurityPolicyProtocol.TLS_V1_2_2021,
       aliases: props.includeWWW ? [siteDomain, fullSiteDomain] : [siteDomain],
     })
+
+    const domain = new DomainName(this, identifyResource(props.resourcePrefix, 'api-domain'), {
+      domainName: apiDomain,
+      certificate: certificate,
+      endpointType: EndpointType.EDGE,
+      securityPolicy: SecurityPolicy.TLS_1_2
+    });
 
     // Set up the CloudFront distribution
     const distribution = new CloudFrontWebDistribution(this, identifyResource(props.resourcePrefix, 'site-distribution'), {
@@ -135,5 +144,12 @@ export class SonicwareInfraStack extends Stack {
         zone
       });
     }
+
+    //add the custom domain name to the hosted zone
+    new ARecord(this, identifyResource(props.resourcePrefix, 'site-alias-record-03'), {
+      zone: zone,
+      recordName: apiDomain,
+      target: RecordTarget.fromAlias(new ApiGatewayDomain(domain)),
+    });
   }
 }
